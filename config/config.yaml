@@ -1,0 +1,23 @@
+telegram:
+  token: "TOKEN"
+  allowed_chat_id: -1001943223605 
+
+ffmpeg:
+  path: "ffmpeg"
+  # arguments will be applied as: ffmpeg -i <input> <args> <output>
+  args: ["-y","-ar","44100","-ac","2","-b:a","192k","-af","loudnorm"]
+
+mpd:
+  address: "localhost:6600"
+  music_directory: "/var/lib/mpd/music" # update to where MPD serves music
+  playlist_name: "telegram"
+
+storage:
+  temp_dir: "/tmp/telegram-mpd-bot"
+  filename_template: "telegram-%d.mp3"
+
+logging:
+  # debug, info, warn, error
+  level: "info"
+  # text or json
+  format: "text"
