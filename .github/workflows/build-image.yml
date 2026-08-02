@@ -2,9 +2,9 @@ name: Build and publish Docker image
 
 on:
   push:
-    branches: [ stable ]
+    branches: [ main ]
   pull_request:
-    branches: [ stable ]
+    branches: [ main ]
 
 permissions:
   contents: read
