@@ -145,13 +145,14 @@ func (b *Bot) handleMessage(ctx context.Context, m *telegram.Message) {
 	// Accept audio, voice, or document with audio mime
 	var fileID string
 	var filenameHint string
-	if m.Audio != nil {
+	switch {
+	case m.Audio != nil:
 		fileID = m.Audio.FileID
 		filenameHint = m.Audio.FileName
-	} else if m.Voice != nil {
+	case m.Voice != nil:
 		fileID = m.Voice.FileID
 		filenameHint = "voice.ogg"
-	} else if m.Document != nil {
+	case m.Document != nil:
 		// basic mime check (HasPrefix avoids panicking on short mime types)
 		if strings.HasPrefix(m.Document.MimeType, "audio") {
 			fileID = m.Document.FileID

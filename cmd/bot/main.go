@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -37,6 +38,13 @@ type Config struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		slog.New(slog.NewTextHandler(os.Stderr, nil)).Error("fatal", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfgPath := flag.String("config", "config/config.yaml", "path to config.yaml")
 	flag.Parse()
 
@@ -44,29 +52,25 @@ func main() {
 	if err != nil {
 		// No logger yet, config controls its own setup; fall back to a
 		// plain stderr message for this one unavoidable bootstrap error.
-		slog.New(slog.NewTextHandler(os.Stderr, nil)).Error("read config", "error", err, "path", *cfgPath)
-		os.Exit(1)
+		return fmt.Errorf("read config %q: %w", *cfgPath, err)
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
-		slog.New(slog.NewTextHandler(os.Stderr, nil)).Error("parse config", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("parse config: %w", err)
 	}
 
 	logger := logging.New(cfg.Logging, os.Stderr)
 
 	// ensure temp dir exists
 	if err := os.MkdirAll(cfg.Storage.TempDir, 0o755); err != nil {
-		logger.Error("create temp dir", "error", err, "path", cfg.Storage.TempDir)
-		os.Exit(1)
+		return fmt.Errorf("create temp dir %q: %w", cfg.Storage.TempDir, err)
 	}
 
 	mpdClient := mpd.New(cfg.MPD.Address, cfg.MPD.PlaylistName, cfg.MPD.MusicDirectory, logging.Component(logger, "mpd"))
 	proc := processor.New(cfg.Ffmpeg.Path, cfg.Ffmpeg.Args, cfg.Storage.TempDir, cfg.MPD.MusicDirectory, logging.Component(logger, "processor"))
 	bot, err := telegrampkg.New(cfg.Telegram.Token, cfg.Telegram.AllowedChatId, proc, mpdClient, logging.Component(logger, "telegram"))
 	if err != nil {
-		logger.Error("telegram bot init", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("telegram bot init: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
@@ -74,8 +78,8 @@ func main() {
 
 	logger.Info("starting bot", "allowed_chat_id", cfg.Telegram.AllowedChatId, "mpd_address", cfg.MPD.Address)
 	if err := bot.Start(ctx); err != nil {
-		logger.Error("bot exited", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("bot exited: %w", err)
 	}
 	logger.Info("bot stopped")
+	return nil
 }

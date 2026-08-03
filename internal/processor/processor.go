@@ -59,7 +59,11 @@ func (p *Processor) Process(ctx context.Context, fileURL string, filenameHint st
 		p.log.Error("create temp file failed", "tmp_dir", p.tmpDir, "error", err)
 		return "", fmt.Errorf("create temp: %w", err)
 	}
-	defer tmpFile.Close()
+	defer func() {
+		if cerr := tmpFile.Close(); cerr != nil {
+			p.log.Warn("temp file close failed", "error", cerr)
+		}
+	}()
 
 	p.log.Debug("downloading file", "url", fileURL, "temp_file", tmpFile.Name())
 	req, err := http.NewRequestWithContext(ctx, "GET", fileURL, nil)
@@ -73,7 +77,11 @@ func (p *Processor) Process(ctx context.Context, fileURL string, filenameHint st
 		p.log.Error("download failed", "url", fileURL, "error", err)
 		return "", fmt.Errorf("download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			p.log.Warn("response body close failed", "error", cerr)
+		}
+	}()
 
 	if resp.StatusCode != 200 {
 		p.log.Error("unexpected download status", "url", fileURL, "status", resp.StatusCode)
