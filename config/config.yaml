@@ -10,7 +10,6 @@ ffmpeg:
 mpd:
   address: "localhost:6600"
   music_directory: "/var/lib/mpd/music" # update to where MPD serves music
-  playlist_name: "telegram"
 
 storage:
   temp_dir: "/tmp/telegram-mpd-bot"

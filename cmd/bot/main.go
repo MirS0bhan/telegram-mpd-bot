@@ -28,7 +28,6 @@ type Config struct {
 	MPD struct {
 		Address        string `yaml:"address"`
 		MusicDirectory string `yaml:"music_directory"`
-		PlaylistName   string `yaml:"playlist_name"`
 	} `yaml:"mpd"`
 	Storage struct {
 		TempDir          string `yaml:"temp_dir"`
