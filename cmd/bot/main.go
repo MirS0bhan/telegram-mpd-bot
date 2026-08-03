@@ -61,7 +61,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	mpdClient := mpd.New(cfg.MPD.Address, cfg.MPD.PlaylistName, logging.Component(logger, "mpd"))
+	mpdClient := mpd.New(cfg.MPD.Address, cfg.MPD.PlaylistName, cfg.MPD.MusicDirectory, logging.Component(logger, "mpd"))
 	proc := processor.New(cfg.Ffmpeg.Path, cfg.Ffmpeg.Args, cfg.Storage.TempDir, cfg.MPD.MusicDirectory, logging.Component(logger, "processor"))
 	bot, err := telegrampkg.New(cfg.Telegram.Token, cfg.Telegram.AllowedChatId, proc, mpdClient, logging.Component(logger, "telegram"))
 	if err != nil {
