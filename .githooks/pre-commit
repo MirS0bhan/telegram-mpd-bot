@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Pre-commit checks for a Go project.
+# Fails fast on formatting issues, vet warnings, or a broken build.
+set -euo pipefail
+
+# Only look at staged .go files (excludes deleted files).
+staged_go_files=$(git diff --cached --name-only --diff-filter=ACM -- '*.go' || true)
+
+if [ -z "$staged_go_files" ]; then
+    exit 0
+fi
+
+echo "==> gofmt"
+unformatted=$(gofmt -l $staged_go_files)
+if [ -n "$unformatted" ]; then
+    echo "The following files are not gofmt'd:"
+    echo "$unformatted"
+    echo
+    echo "Run: gofmt -w $unformatted"
+    exit 1
+fi
+
+if command -v goimports >/dev/null 2>&1; then
+    echo "==> goimports"
+    bad_imports=$(goimports -l $staged_go_files)
+    if [ -n "$bad_imports" ]; then
+        echo "The following files have unformatted imports:"
+        echo "$bad_imports"
+        echo
+        echo "Run: goimports -w $bad_imports"
+        exit 1
+    fi
+fi
+
+echo "==> go vet"
+go vet ./...
+
+if command -v golangci-lint >/dev/null 2>&1; then
+    echo "==> golangci-lint"
+    golangci-lint run
+else
+    echo "(skipping golangci-lint: not installed)"
+fi
+
+echo "==> go build"
+go build ./... 1>/dev/null
+
+echo "pre-commit checks passed"

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Enforces a Conventional Commits-style subject line, e.g.:
+#   fix(telegram): serialize playlist adds
+#   feat(mpd): add live-queue mode
+set -euo pipefail
+
+msg_file="$1"
+subject=$(head -n1 "$msg_file")
+
+# Ignore merge commits and fixup/squash commits.
+if [[ "$subject" =~ ^Merge ]] || [[ "$subject" =~ ^(fixup|squash)! ]]; then
+    exit 0
+fi
+
+pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9_-]+\))?: .{1,88}$'
+
+if ! [[ "$subject" =~ $pattern ]]; then
+    echo "Commit message doesn't match Conventional Commits style:"
+    echo "  <type>(<scope>): <subject>"
+    echo
+    echo "Types: feat fix docs style refactor perf test build ci chore revert"
+    echo "Got:   $subject"
+    exit 1
+fi

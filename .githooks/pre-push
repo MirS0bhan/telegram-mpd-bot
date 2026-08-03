@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Pre-push checks for a Go project.
+# Runs the test suite and confirms go.mod/go.sum are tidy before anything
+# reaches the remote.
+set -euo pipefail
+
+echo "==> go mod tidy check"
+cp go.mod /tmp/go.mod.orig
+cp go.sum /tmp/go.sum.orig 2>/dev/null || true
+go mod tidy
+if ! diff -q go.mod /tmp/go.mod.orig >/dev/null || ! diff -q go.sum /tmp/go.sum.orig >/dev/null 2>&1; then
+    echo "go.mod/go.sum are not tidy. Run 'go mod tidy' and commit the result."
+    # restore so the push doesn't leave your working tree modified
+    mv /tmp/go.mod.orig go.mod
+    [ -f /tmp/go.sum.orig ] && mv /tmp/go.sum.orig go.sum
+    exit 1
+fi
+rm -f /tmp/go.mod.orig /tmp/go.sum.orig
+
+echo "==> go test"
+go test -race -shuffle=on ./...
+
+echo "pre-push checks passed"
