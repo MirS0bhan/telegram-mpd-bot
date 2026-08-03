@@ -9,64 +9,68 @@ import (
 	"github.com/fhs/gompd/v2/mpd"
 )
 
-// Minimal MPD controller: add to the live play queue, or to a stored playlist.
-
+// Client appends tracks to MPD's live queue and starts playback only if MPD
+// is currently stopped.
 type Client interface {
-	AddToPlaylist(path string) error
+	Enqueue(path string) error
 }
 
 type client struct {
 	addr     string
-	playlist string
 	musicDir string
 	log      *slog.Logger
 }
 
-// New creates an MPD client.
+// New creates an MPD queue client.
 //
-// musicDir must match MPD's own music_directory setting (from mpd.conf).
-// Paths passed to AddToPlaylist are made relative to it before being sent
-// to MPD, since MPD's protocol expects a URI relative to music_directory
-// (or a URL) - never an absolute filesystem path.
-//
-// playlist controls what AddToPlaylist does:
-//   - empty: tracks are appended to MPD's live play queue (so they play
-//     soon), via the "add" command.
-//   - non-empty: tracks are appended to that *stored* playlist file
-//     instead, via "playlistadd". Note this does NOT touch what's
-//     currently playing - something else has to `load` it later.
-func New(addr, playlist, musicDir string, logger *slog.Logger) Client {
+// musicDir must match MPD's music_directory from mpd.conf.
+func New(addr, musicDir string, logger *slog.Logger) Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &client{addr: addr, playlist: playlist, musicDir: musicDir, log: logger}
+
+	return &client{
+		addr:     addr,
+		musicDir: filepath.Clean(musicDir),
+		log:      logger,
+	}
 }
 
-// toRelative converts an absolute path under musicDir into the
-// music_directory-relative form MPD expects. If p isn't under musicDir (or
-// musicDir isn't configured), p is returned unchanged - this covers callers
-// that already hand back MPD-relative paths.
-func (c *client) toRelative(p string) string {
-	if c.musicDir == "" || !filepath.IsAbs(p) {
-		return p
+// toRelative converts an absolute filesystem path into the MPD URI relative
+// to music_directory.
+func (c *client) toRelative(p string) (string, error) {
+	if c.musicDir == "" {
+		return "", fmt.Errorf("musicDir is not configured")
 	}
-	rel, err := filepath.Rel(c.musicDir, p)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		c.log.Warn("path is not under configured music_directory; sending as-is",
-			"path", p, "music_dir", c.musicDir)
-		return p
+
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", fmt.Errorf("abs path: %w", err)
 	}
-	return rel
+
+	rel, err := filepath.Rel(c.musicDir, abs)
+	if err != nil {
+		return "", fmt.Errorf("relative path: %w", err)
+	}
+
+	if strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("path %q is outside musicDir %q", abs, c.musicDir)
+	}
+
+	// MPD expects forward slashes even on Windows.
+	return filepath.ToSlash(rel), nil
 }
 
-// AddToPlaylist connects and issues a single add command. We keep the control surface minimal.
-func (c *client) AddToPlaylist(path string) error {
-	p := c.toRelative(path)
+// Enqueue updates MPD's database for the file's directory, appends the track
+// to the live queue, and starts playback only if MPD is currently stopped.
+func (c *client) Enqueue(path string) error {
+	uri, err := c.toRelative(path)
+	if err != nil {
+		return err
+	}
 
-	c.log.Debug("connecting to mpd", "address", c.addr)
 	conn, err := mpd.Dial("tcp", c.addr)
 	if err != nil {
-		c.log.Error("connect mpd failed", "address", c.addr, "error", err)
 		return fmt.Errorf("connect mpd: %w", err)
 	}
 	defer func() {
@@ -75,21 +79,44 @@ func (c *client) AddToPlaylist(path string) error {
 		}
 	}()
 
-	if c.playlist == "" {
-		c.log.Debug("adding to live queue", "path", p)
-		if err := conn.Add(p); err != nil {
-			c.log.Error("queue add failed", "path", p, "error", err)
-			return fmt.Errorf("queue add: %w", err)
+	// Update only the containing directory, not the whole library.
+	dir := filepath.ToSlash(filepath.Dir(uri))
+	if dir == "." {
+		dir = ""
+	}
+
+	if _, err := conn.Update(dir); err != nil {
+		return fmt.Errorf("mpd update %q: %w", dir, err)
+	}
+
+	// Append to queue and get the queue song ID.
+	id, err := conn.AddID(uri, -1)
+	if err != nil {
+		return fmt.Errorf("mpd addid %q: %w", uri, err)
+	}
+
+	status, err := conn.Status()
+	if err != nil {
+		return fmt.Errorf("mpd status: %w", err)
+	}
+
+	if status["state"] == "stop" {
+		if err := conn.PlayID(id); err != nil {
+			return fmt.Errorf("mpd playid %d: %w", id, err)
 		}
-		c.log.Info("added track to live queue", "path", p)
+
+		c.log.Info("track enqueued and playback started",
+			"uri", uri,
+			"id", id,
+		)
 		return nil
 	}
 
-	c.log.Debug("adding to stored playlist", "playlist", c.playlist, "path", p)
-	if err := conn.PlaylistAdd(c.playlist, p); err != nil {
-		c.log.Error("playlist add failed", "playlist", c.playlist, "path", p, "error", err)
-		return fmt.Errorf("playlist add: %w", err)
-	}
-	c.log.Info("added track to stored playlist", "playlist", c.playlist, "path", p)
+	c.log.Info("track enqueued",
+		"uri", uri,
+		"id", id,
+		"state", status["state"],
+	)
+
 	return nil
 }

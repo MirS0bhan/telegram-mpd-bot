@@ -18,7 +18,7 @@ type Processor interface {
 
 // MPDController defines the minimal interface used by the telegram package
 type MPDController interface {
-	AddToPlaylist(path string) error
+	Enqueue(path string) error
 }
 
 // playlistJob carries a single message's download result through an ordered
@@ -118,7 +118,7 @@ func (b *Bot) finishJob(job *playlistJob) {
 	}
 	logger.Debug("file processed", "stored_path", res.stored)
 
-	if err := b.mpd.AddToPlaylist(res.stored); err != nil {
+	if err := b.mpd.Enqueue(res.stored); err != nil {
 		logger.Error("mpd add failed", "stored_path", res.stored, "error", err)
 		b.reply("failed to add to playlist: "+err.Error(), job.chatID)
 		return
